@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { del, head, list, put } from "@vercel/blob";
+import { del, get, list, put } from "@vercel/blob";
 import { isVercelRuntime, VERCEL_BLOB_HINT } from "@/lib/vercelStorage";
 
 /** Dossier local (dev / serveur avec disque persistant). */
@@ -28,7 +28,7 @@ export async function uploadsWrite(relPath: string, buf: Buffer): Promise<void> 
   if (useBlobUploads()) {
     const token = blobToken();
     await put(toBlobPathname(normalized), buf, {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
       token,
     });
@@ -50,10 +50,12 @@ export async function uploadsRead(relPath: string): Promise<Buffer> {
     const token = blobToken();
     const pathname = toBlobPathname(normalized);
     try {
-      const meta = await head(pathname, { token });
-      const res = await fetch(meta.url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return Buffer.from(await res.arrayBuffer());
+      const result = await get(pathname, { access: "private", token });
+      if (!result || result.statusCode !== 200 || !result.stream) {
+        throw new Error("Blob introuvable");
+      }
+      const ab = await new Response(result.stream).arrayBuffer();
+      return Buffer.from(ab);
     } catch {
       const err = new Error("ENOENT") as NodeJS.ErrnoException;
       err.code = "ENOENT";
