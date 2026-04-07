@@ -89,11 +89,14 @@ export default function ParametresPage() {
           <h2 className="text-lg font-semibold text-white">Données & IA</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-400">
             <li>
-              Base métier : <code className="rounded bg-white/5 px-1 text-slate-300">data/db.json</code>
+              Base métier : en local <code className="rounded bg-white/5 px-1 text-slate-300">data/db.json</code> ; en
+              production (Vercel) : Postgres via{" "}
+              <code className="rounded bg-white/5 px-1 text-slate-300">DATABASE_URL</code> (ex. Neon).
             </li>
             <li>
-              Fichiers (terrains, médias) :{" "}
-              <code className="rounded bg-white/5 px-1 text-slate-300">data/uploads/</code>
+              Fichiers (terrains, médias) : en local{" "}
+              <code className="rounded bg-white/5 px-1 text-slate-300">data/uploads/</code> ; en prod :{" "}
+              <code className="rounded bg-white/5 px-1 text-slate-300">BLOB_READ_WRITE_TOKEN</code> (Vercel Blob).
             </li>
             <li>
               Visions terrain (gratuit) :{" "}

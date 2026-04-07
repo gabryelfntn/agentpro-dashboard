@@ -1,7 +1,6 @@
-import { promises as fs } from "fs";
 import path from "path";
 import Replicate from "replicate";
-import { updateDb, UPLOADS_ROOT } from "@/lib/db";
+import { updateDb, uploadsRead, uploadsWrite } from "@/lib/db";
 import type { TerrainJob } from "@/lib/types";
 import { huggingFaceImageToImage } from "@/lib/terrain/huggingfaceImg2Img";
 
@@ -125,8 +124,7 @@ export async function processTerrainJob(jobId: string): Promise<void> {
       );
     }
 
-    const absSource = path.join(UPLOADS_ROOT, snapshot.sourceRelPath);
-    const buffer = await fs.readFile(absSource);
+    const buffer = await uploadsRead(snapshot.sourceRelPath);
     const ext = path.extname(snapshot.sourceRelPath).toLowerCase() || ".jpg";
     const mime =
       ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
@@ -135,8 +133,6 @@ export async function processTerrainJob(jobId: string): Promise<void> {
 
     const dir = path.posix.dirname(snapshot.sourceRelPath.replace(/\\/g, "/"));
     const resultRelPath = `${dir}/result.png`;
-    const absResult = path.join(UPLOADS_ROOT, resultRelPath);
-
     let outBuf: Buffer;
     let modelLabel: string;
 
@@ -177,8 +173,7 @@ export async function processTerrainJob(jobId: string): Promise<void> {
       }
     }
 
-    await fs.mkdir(path.dirname(absResult), { recursive: true });
-    await fs.writeFile(absResult, outBuf);
+    await uploadsWrite(resultRelPath, outBuf);
 
     const dureeMs = Date.now() - t0;
 

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
 import path from "path";
-import { updateDb, UPLOADS_ROOT } from "@/lib/db";
+import { updateDb, uploadsWrite } from "@/lib/db";
 import type { MediaDocument } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -50,10 +49,8 @@ export async function POST(request: Request) {
     const safeName = file.name.replace(/[^\w.\-àâäéèêëïîôùûüç\s]/gi, "_").slice(0, 120);
     const relDir = `documents/${id}`;
     const relPath = `${relDir}/${safeName || "document"}`;
-    const absDir = path.join(UPLOADS_ROOT, relDir);
-    await fs.mkdir(absDir, { recursive: true });
     const buf = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(path.join(UPLOADS_ROOT, relPath), buf);
+    await uploadsWrite(relPath, buf);
 
     const row: MediaDocument = {
       id,

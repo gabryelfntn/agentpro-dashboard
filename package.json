@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@huggingface/inference": "^4.13.15",
+    "@neondatabase/serverless": "^1.0.2",
+    "@vercel/blob": "^2.3.3",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.7.0",
     "next": "16.2.2",

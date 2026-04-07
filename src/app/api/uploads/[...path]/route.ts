@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
 import path from "path";
-import { UPLOADS_ROOT } from "@/lib/db";
+import { UPLOADS_ROOT, uploadsRead, useBlobUploads } from "@/lib/db";
 
 const MIME: Record<string, string> = {
   ".png": "image/png",
@@ -19,22 +18,25 @@ export async function GET(_request: Request, ctx: Ctx) {
     return NextResponse.json({ error: "Chemin invalide" }, { status: 400 });
   }
 
-  const base = path.resolve(UPLOADS_ROOT);
-  const target = path.resolve(base, ...segments);
-  const rel = path.relative(base, target);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+  const relPath = segments.join("/");
+  if (!relPath || relPath.includes("..")) {
     return NextResponse.json({ error: "Interdit" }, { status: 403 });
   }
 
-  try {
-    const stat = await fs.stat(target);
-    if (!stat.isFile()) {
-      return NextResponse.json({ error: "Introuvable" }, { status: 404 });
+  if (!useBlobUploads()) {
+    const base = path.resolve(UPLOADS_ROOT);
+    const target = path.resolve(base, ...segments);
+    const rel = path.relative(base, target);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      return NextResponse.json({ error: "Interdit" }, { status: 403 });
     }
-    const buf = await fs.readFile(target);
-    const ext = path.extname(target).toLowerCase();
+  }
+
+  try {
+    const buf = await uploadsRead(relPath);
+    const ext = path.extname(relPath).toLowerCase();
     const contentType = MIME[ext] || "application/octet-stream";
-    return new NextResponse(buf, {
+    return new NextResponse(new Uint8Array(buf), {
       headers: {
         "Content-Type": contentType,
         "Cache-Control": "private, max-age=3600",

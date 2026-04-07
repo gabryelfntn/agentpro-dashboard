@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { addDays, formatISO, setHours, setMinutes, startOfDay } from "date-fns";
+import { pgDeletePayload, pgReadPayload, pgSql, pgWritePayload, usesPostgresDb } from "@/lib/dbPostgres";
 import type {
   AppDatabase,
   Chantier,
@@ -12,6 +13,23 @@ import type {
 } from "./types";
 
 const DB_PATH = path.join(process.cwd(), "data", "db.json");
+
+export function usesRemoteDb(): boolean {
+  return usesPostgresDb();
+}
+
+export async function wipeDbStorage(): Promise<void> {
+  const sql = pgSql();
+  if (sql) {
+    await pgDeletePayload(sql);
+    return;
+  }
+  try {
+    await fs.unlink(DB_PATH);
+  } catch {
+    /* absent */
+  }
+}
 
 function iso(d: Date) {
   return d.toISOString();
@@ -285,6 +303,21 @@ function buildDefaultDatabase(): AppDatabase {
 }
 
 export async function readDb(): Promise<AppDatabase> {
+  const sql = pgSql();
+  if (sql) {
+    const raw = await pgReadPayload(sql);
+    if (raw != null && raw !== "") {
+      try {
+        return normalizeAppDb(JSON.parse(raw));
+      } catch {
+        /* fallback fresh */
+      }
+    }
+    const fresh = buildDefaultDatabase();
+    await writeDb(fresh);
+    return fresh;
+  }
+
   try {
     const raw = await fs.readFile(DB_PATH, "utf-8");
     return normalizeAppDb(JSON.parse(raw));
@@ -296,8 +329,14 @@ export async function readDb(): Promise<AppDatabase> {
 }
 
 export async function writeDb(data: AppDatabase): Promise<void> {
+  const payload = JSON.stringify(data, null, 2);
+  const sql = pgSql();
+  if (sql) {
+    await pgWritePayload(sql, payload);
+    return;
+  }
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
+  await fs.writeFile(DB_PATH, payload, "utf-8");
 }
 
 export async function updateDb(mutator: (db: AppDatabase) => void): Promise<AppDatabase> {
@@ -307,4 +346,10 @@ export async function updateDb(mutator: (db: AppDatabase) => void): Promise<AppD
   return db;
 }
 
-export const UPLOADS_ROOT = path.join(process.cwd(), "data", "uploads");
+export {
+  UPLOADS_ROOT,
+  uploadsWrite,
+  uploadsRead,
+  uploadsRemovePrefix,
+  useBlobUploads,
+} from "./uploadsStorage";

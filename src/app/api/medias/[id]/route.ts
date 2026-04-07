@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
 import path from "path";
-import { readDb, updateDb, UPLOADS_ROOT } from "@/lib/db";
+import { readDb, updateDb, uploadsRemovePrefix } from "@/lib/db";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -18,8 +17,8 @@ export async function DELETE(_request: Request, ctx: Ctx) {
     return NextResponse.json({ error: "Introuvable" }, { status: 404 });
   }
   try {
-    const abs = path.join(UPLOADS_ROOT, relPath);
-    await fs.rm(path.dirname(abs), { recursive: true, force: true });
+    const dir = path.posix.dirname(relPath.replace(/\\/g, "/"));
+    await uploadsRemovePrefix(dir);
   } catch {
     /* ignore */
   }

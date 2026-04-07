@@ -1,8 +1,6 @@
 import { after } from "next/server";
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
-import { updateDb, UPLOADS_ROOT } from "@/lib/db";
+import { updateDb, uploadsWrite } from "@/lib/db";
 import { processTerrainJob } from "@/lib/terrain/processJob";
 import type { TerrainJob } from "@/lib/types";
 
@@ -53,10 +51,8 @@ export async function POST(request: Request) {
       mime === "image/png" ? ".png" : mime === "image/webp" ? ".webp" : ".jpg";
     const relDir = `terrain/${jobId}`;
     const sourceRelPath = `${relDir}/source${ext}`;
-    const absDir = path.join(UPLOADS_ROOT, relDir);
-    await fs.mkdir(absDir, { recursive: true });
     const buf = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(path.join(UPLOADS_ROOT, sourceRelPath), buf);
+    await uploadsWrite(sourceRelPath, buf);
 
     const now = new Date().toISOString();
     const job: TerrainJob = {

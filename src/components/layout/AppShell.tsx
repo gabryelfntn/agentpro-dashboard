@@ -178,7 +178,10 @@ export function AppShell({
           ))}
         </nav>
         <p className={`mt-auto px-2 text-xs text-slate-600 ${collapsed ? "lg:hidden" : ""}`}>
-          Stockage local : data/db.json et data/uploads/
+          Données : en local <code className="text-slate-500">data/db.json</code> ; en prod : Postgres (
+          <code className="text-slate-500">DATABASE_URL</code>, ex. Neon). Fichiers :{" "}
+          <code className="text-slate-500">data/uploads/</code> ou Blob (
+          <code className="text-slate-500">BLOB_READ_WRITE_TOKEN</code>).
         </p>
       </aside>
 
