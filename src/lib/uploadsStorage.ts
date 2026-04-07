@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { del, head, list, put } from "@vercel/blob";
+import { isVercelRuntime, VERCEL_BLOB_HINT } from "@/lib/vercelStorage";
 
 /** Dossier local (dev / serveur avec disque persistant). */
 export const UPLOADS_ROOT = path.join(process.cwd(), "data", "uploads");
@@ -33,6 +34,11 @@ export async function uploadsWrite(relPath: string, buf: Buffer): Promise<void> 
     });
     return;
   }
+  if (isVercelRuntime()) {
+    throw new Error(
+      `Sur Vercel, les fichiers ne peuvent pas être enregistrés dans data/uploads/. ${VERCEL_BLOB_HINT}`,
+    );
+  }
   const abs = path.join(UPLOADS_ROOT, normalized);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, buf);
@@ -54,6 +60,11 @@ export async function uploadsRead(relPath: string): Promise<Buffer> {
       throw err;
     }
   }
+  if (isVercelRuntime()) {
+    throw new Error(
+      `Sur Vercel, lecture disque locale impossible. ${VERCEL_BLOB_HINT}`,
+    );
+  }
   return fs.readFile(path.join(UPLOADS_ROOT, normalized));
 }
 
@@ -70,6 +81,9 @@ export async function uploadsRemovePrefix(relDir: string): Promise<void> {
       if (!page.hasMore) break;
       cursor = page.cursor;
     }
+    return;
+  }
+  if (isVercelRuntime()) {
     return;
   }
   await fs.rm(path.join(UPLOADS_ROOT, normalized), { recursive: true, force: true });

@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { addDays, formatISO, setHours, setMinutes, startOfDay } from "date-fns";
 import { pgDeletePayload, pgReadPayload, pgSql, pgWritePayload, usesPostgresDb } from "@/lib/dbPostgres";
+import { isVercelRuntime, VERCEL_DB_HINT } from "@/lib/vercelStorage";
 import type {
   AppDatabase,
   Chantier,
@@ -23,6 +24,9 @@ export async function wipeDbStorage(): Promise<void> {
   if (sql) {
     await pgDeletePayload(sql);
     return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Réinitialisation impossible sans base Postgres sur Vercel. ${VERCEL_DB_HINT}`);
   }
   try {
     await fs.unlink(DB_PATH);
@@ -322,6 +326,11 @@ export async function readDb(): Promise<AppDatabase> {
     const raw = await fs.readFile(DB_PATH, "utf-8");
     return normalizeAppDb(JSON.parse(raw));
   } catch {
+    if (isVercelRuntime()) {
+      throw new Error(
+        `Aucune base Postgres configurée sur Vercel (fichier local absent). ${VERCEL_DB_HINT}`,
+      );
+    }
     const fresh = buildDefaultDatabase();
     await writeDb(fresh);
     return fresh;
@@ -334,6 +343,9 @@ export async function writeDb(data: AppDatabase): Promise<void> {
   if (sql) {
     await pgWritePayload(sql, payload);
     return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Impossible d’écrire data/db.json sur Vercel. ${VERCEL_DB_HINT}`);
   }
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
   await fs.writeFile(DB_PATH, payload, "utf-8");
