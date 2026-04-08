@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { AppSplash } from "@/components/splash/AppSplash";
 import { PwaRegister } from "./pwa-register";
 import type { Viewport } from "next";
 
@@ -28,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${inter.variable} h-full`}>
       <body className={`${inter.className} min-h-full antialiased app-shell-bg`}>
+        <AppSplash />
         <PwaRegister />
         {children}
       </body>
