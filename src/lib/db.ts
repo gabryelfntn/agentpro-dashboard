@@ -1,7 +1,13 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { addDays, formatISO, setHours, setMinutes, startOfDay } from "date-fns";
-import { pgDeletePayload, pgReadPayload, pgSql, pgWritePayload, usesPostgresDb } from "@/lib/dbPostgres";
+import {
+  pgDeleteValue,
+  pgReadValue,
+  pgSql,
+  pgWriteValue,
+  usesPostgresDb,
+} from "@/lib/dbPostgres";
 import { isVercelRuntime, VERCEL_DB_HINT } from "@/lib/vercelStorage";
 import type {
   AppDatabase,
@@ -13,23 +19,36 @@ import type {
   TaskItem,
 } from "./types";
 
-const DB_PATH = path.join(process.cwd(), "data", "db.json");
+const DB_ROOT = path.join(process.cwd(), "data", "users");
+
+function dbPathForUser(userId: string) {
+  return path.join(DB_ROOT, userId, "db.json");
+}
+
+function dbKeyForUser(userId: string) {
+  return `db:v1:${userId}`;
+}
 
 export function usesRemoteDb(): boolean {
   return usesPostgresDb();
 }
 
-export async function wipeDbStorage(): Promise<void> {
+export async function wipeDbStorage(userId?: string): Promise<void> {
   const sql = pgSql();
   if (sql) {
-    await pgDeletePayload(sql);
+    const key = userId ? dbKeyForUser(userId) : "main";
+    await pgDeleteValue(sql, key);
     return;
   }
   if (isVercelRuntime()) {
     throw new Error(`Réinitialisation impossible sans base Postgres sur Vercel. ${VERCEL_DB_HINT}`);
   }
   try {
-    await fs.unlink(DB_PATH);
+    if (!userId) {
+      await fs.rm(DB_ROOT, { recursive: true, force: true });
+      return;
+    }
+    await fs.unlink(dbPathForUser(userId));
   } catch {
     /* absent */
   }
@@ -307,9 +326,10 @@ function buildDefaultDatabase(): AppDatabase {
 }
 
 export async function readDb(): Promise<AppDatabase> {
+  // Backward compatibility: single shared DB (legacy).
   const sql = pgSql();
   if (sql) {
-    const raw = await pgReadPayload(sql);
+    const raw = await pgReadValue(sql, "main");
     if (raw != null && raw !== "") {
       try {
         return normalizeAppDb(JSON.parse(raw));
@@ -323,7 +343,7 @@ export async function readDb(): Promise<AppDatabase> {
   }
 
   try {
-    const raw = await fs.readFile(DB_PATH, "utf-8");
+    const raw = await fs.readFile(path.join(process.cwd(), "data", "db.json"), "utf-8");
     return normalizeAppDb(JSON.parse(raw));
   } catch {
     if (isVercelRuntime()) {
@@ -338,17 +358,19 @@ export async function readDb(): Promise<AppDatabase> {
 }
 
 export async function writeDb(data: AppDatabase): Promise<void> {
+  // Backward compatibility: single shared DB (legacy).
   const payload = JSON.stringify(data, null, 2);
   const sql = pgSql();
   if (sql) {
-    await pgWritePayload(sql, payload);
+    await pgWriteValue(sql, "main", payload);
     return;
   }
   if (isVercelRuntime()) {
     throw new Error(`Impossible d’écrire data/db.json sur Vercel. ${VERCEL_DB_HINT}`);
   }
-  await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, payload, "utf-8");
+  const legacyPath = path.join(process.cwd(), "data", "db.json");
+  await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+  await fs.writeFile(legacyPath, payload, "utf-8");
 }
 
 export async function updateDb(mutator: (db: AppDatabase) => void): Promise<AppDatabase> {
@@ -358,10 +380,66 @@ export async function updateDb(mutator: (db: AppDatabase) => void): Promise<AppD
   return db;
 }
 
+export async function readDbForUser(userId: string): Promise<AppDatabase> {
+  const sql = pgSql();
+  if (sql) {
+    const raw = await pgReadValue(sql, dbKeyForUser(userId));
+    if (raw != null && raw !== "") {
+      try {
+        return normalizeAppDb(JSON.parse(raw));
+      } catch {
+        /* fallback fresh */
+      }
+    }
+    const fresh = buildDefaultDatabase();
+    await writeDbForUser(userId, fresh);
+    return fresh;
+  }
+
+  try {
+    const raw = await fs.readFile(dbPathForUser(userId), "utf-8");
+    return normalizeAppDb(JSON.parse(raw));
+  } catch {
+    if (isVercelRuntime()) {
+      throw new Error(
+        `Aucune base Postgres configurée sur Vercel (stockage local absent). ${VERCEL_DB_HINT}`,
+      );
+    }
+    const fresh = buildDefaultDatabase();
+    await writeDbForUser(userId, fresh);
+    return fresh;
+  }
+}
+
+export async function writeDbForUser(userId: string, data: AppDatabase): Promise<void> {
+  const payload = JSON.stringify(data, null, 2);
+  const sql = pgSql();
+  if (sql) {
+    await pgWriteValue(sql, dbKeyForUser(userId), payload);
+    return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Impossible d’écrire la base utilisateur sur Vercel sans Postgres. ${VERCEL_DB_HINT}`);
+  }
+  const p = dbPathForUser(userId);
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.writeFile(p, payload, "utf-8");
+}
+
+export async function updateDbForUser(
+  userId: string,
+  mutator: (db: AppDatabase) => void,
+): Promise<AppDatabase> {
+  const db = await readDbForUser(userId);
+  mutator(db);
+  await writeDbForUser(userId, db);
+  return db;
+}
+
 export {
   UPLOADS_ROOT,
   uploadsWrite,
   uploadsRead,
   uploadsRemovePrefix,
-  useBlobUploads,
+  blobUploadsEnabled,
 } from "./uploadsStorage";

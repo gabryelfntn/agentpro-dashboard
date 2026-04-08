@@ -1,19 +1,22 @@
 import { NextResponse } from "next/server";
-import { readDb, updateDb } from "@/lib/db";
+import { readDbForUser, updateDbForUser } from "@/lib/db";
 import type { DevisStatut } from "@/lib/types";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return unauthorizedJson();
     const body = (await request.json()) as {
       statut?: DevisStatut;
       montantTtc?: number;
       client?: string;
     };
     let found = false;
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       const row = db.devis.find((d) => d.id === id);
       if (!row) return;
       found = true;
@@ -27,7 +30,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (!found) {
       return NextResponse.json({ error: "Introuvable" }, { status: 404 });
     }
-    const db = await readDb();
+    const db = await readDbForUser(userId);
     return NextResponse.json(db.devis.find((d) => d.id === id));
   } catch {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
@@ -36,8 +39,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
 export async function DELETE(_request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
   let removed = false;
-  await updateDb((db) => {
+  await updateDbForUser(userId, (db) => {
     const i = db.devis.findIndex((d) => d.id === id);
     if (i >= 0) {
       db.devis.splice(i, 1);

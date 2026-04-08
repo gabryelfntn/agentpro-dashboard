@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { readDb, wipeDbStorage, writeDb } from "@/lib/db";
+import { readDbForUser, wipeDbStorage, writeDbForUser } from "@/lib/db";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 export async function POST() {
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   const profile = db.profile;
-  await wipeDbStorage();
-  const fresh = await readDb();
+  await wipeDbStorage(userId);
+  const fresh = await readDbForUser(userId);
   fresh.profile = profile;
-  await writeDb(fresh);
+  await writeDbForUser(userId, fresh);
   return NextResponse.json({ ok: true });
 }

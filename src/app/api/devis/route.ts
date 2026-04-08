@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
-import { readDb, updateDb } from "@/lib/db";
+import { readDbForUser, updateDbForUser } from "@/lib/db";
 import type { Devis } from "@/lib/types";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 export async function GET() {
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   return NextResponse.json(db.devis);
 }
 
 export async function POST(request: Request) {
   try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return unauthorizedJson();
     const body = (await request.json()) as {
       client?: string;
       montantTtc?: number;
@@ -24,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     let created!: Devis;
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       const n = db.devis.length + 200;
       created = {
         id: crypto.randomUUID(),

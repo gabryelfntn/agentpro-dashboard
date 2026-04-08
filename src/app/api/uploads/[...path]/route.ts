@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import path from "path";
-import { UPLOADS_ROOT, uploadsRead, useBlobUploads } from "@/lib/db";
+import { UPLOADS_ROOT, blobUploadsEnabled, uploadsRead } from "@/lib/db";
+import { readDbForUser } from "@/lib/db";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 const MIME: Record<string, string> = {
   ".png": "image/png",
@@ -23,7 +25,22 @@ export async function GET(_request: Request, ctx: Ctx) {
     return NextResponse.json({ error: "Interdit" }, { status: 403 });
   }
 
-  if (!useBlobUploads()) {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
+  const normalized = relPath.replace(/\\/g, "/");
+  const allowed =
+    db.mediaDocuments.some((d) => d.relPath.replace(/\\/g, "/") === normalized) ||
+    db.terrainJobs.some(
+      (j) =>
+        j.sourceRelPath.replace(/\\/g, "/") === normalized ||
+        (j.resultRelPath ? j.resultRelPath.replace(/\\/g, "/") === normalized : false),
+    );
+  if (!allowed) {
+    return NextResponse.json({ error: "Interdit" }, { status: 403 });
+  }
+
+  if (!blobUploadsEnabled()) {
     const base = path.resolve(UPLOADS_ROOT);
     const target = path.resolve(base, ...segments);
     const rel = path.relative(base, target);

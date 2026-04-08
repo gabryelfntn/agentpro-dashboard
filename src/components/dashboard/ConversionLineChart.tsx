@@ -25,7 +25,7 @@ export function ConversionLineChart() {
   }, []);
 
   useEffect(() => {
-    setMounted(true);
+    const t = window.setTimeout(() => setMounted(true), 0);
     startTransition(() => {
       void load();
     });
@@ -35,7 +35,10 @@ export function ConversionLineChart() {
       });
     };
     window.addEventListener("agentpro-data-changed", h);
-    return () => window.removeEventListener("agentpro-data-changed", h);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("agentpro-data-changed", h);
+    };
   }, [load]);
 
   return (

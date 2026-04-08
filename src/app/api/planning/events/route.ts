@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { readDb, updateDb } from "@/lib/db";
+import { readDbForUser, updateDbForUser } from "@/lib/db";
 import type { PlanningEvent, PlanningEventType } from "@/lib/types";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 export async function GET() {
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   const events = [...db.planningEvents].sort(
     (a, b) => new Date(a.debut).getTime() - new Date(b.debut).getTime(),
   );
@@ -12,6 +15,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return unauthorizedJson();
     const body = (await request.json()) as Partial<PlanningEvent>;
     const titre = body.titre?.trim();
     const debut = body.debut;
@@ -39,7 +44,7 @@ export async function POST(request: Request) {
           : undefined,
       couleur: body.couleur?.trim() || undefined,
     };
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       db.planningEvents.push(row);
     });
     return NextResponse.json(row, { status: 201 });

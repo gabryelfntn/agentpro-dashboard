@@ -50,11 +50,17 @@ function toLocalInput(iso: string) {
 
 export default function PlanningPage() {
   /** null jusqu’au montage client : évite SSR `new Date()` ≠ navigateur (fuseau / jour) → hydratation. */
-  const [cursor, setCursor] = useState<Date | null>(null);
+  const [cursor, setCursor] = useState<Date | null>(() => {
+    if (typeof window === "undefined") return null;
+    return startOfMonth(new Date());
+  });
   const [events, setEvents] = useState<PlanningEvent[]>([]);
   const [chantiers, setChantiers] = useState<Chantier[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Date | null>(null);
+  const [selected, setSelected] = useState<Date | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new Date();
+  });
 
   const [titre, setTitre] = useState("");
   const [type, setType] = useState<PlanningEventType>("chantier");
@@ -71,12 +77,6 @@ export default function PlanningPage() {
     if (er.ok) setEvents(await er.json());
     if (cr.ok) setChantiers(await cr.json());
     setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    const now = new Date();
-    setCursor(startOfMonth(now));
-    setSelected(now);
   }, []);
 
   useEffect(() => {

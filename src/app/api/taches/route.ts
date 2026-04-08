@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { readDb, updateDb } from "@/lib/db";
+import { readDbForUser, updateDbForUser } from "@/lib/db";
 import type { TaskItem, TaskPriority } from "@/lib/types";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 export async function GET() {
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   const tasks = [...db.tasks].sort((a, b) => {
     if (a.fait !== b.fait) return a.fait ? 1 : -1;
     const da = a.echeance ? new Date(a.echeance).getTime() : Infinity;
@@ -15,6 +18,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return unauthorizedJson();
     const body = (await request.json()) as Partial<TaskItem>;
     const titre = body.titre?.trim();
     if (!titre) {
@@ -33,7 +38,7 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now,
     };
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       db.tasks.push(row);
     });
     return NextResponse.json(row, { status: 201 });

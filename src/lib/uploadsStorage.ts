@@ -8,7 +8,7 @@ export const UPLOADS_ROOT = path.join(process.cwd(), "data", "uploads");
 
 const BLOB_PREFIX = "agentpro-uploads";
 
-export function useBlobUploads(): boolean {
+export function blobUploadsEnabled(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
 }
 
@@ -25,7 +25,7 @@ function toBlobPathname(relPath: string): string {
 
 export async function uploadsWrite(relPath: string, buf: Buffer): Promise<void> {
   const normalized = relPath.replace(/\\/g, "/");
-  if (useBlobUploads()) {
+  if (blobUploadsEnabled()) {
     const token = blobToken();
     await put(toBlobPathname(normalized), buf, {
       access: "private",
@@ -46,7 +46,7 @@ export async function uploadsWrite(relPath: string, buf: Buffer): Promise<void> 
 
 export async function uploadsRead(relPath: string): Promise<Buffer> {
   const normalized = relPath.replace(/\\/g, "/");
-  if (useBlobUploads()) {
+  if (blobUploadsEnabled()) {
     const token = blobToken();
     const pathname = toBlobPathname(normalized);
     try {
@@ -73,7 +73,7 @@ export async function uploadsRead(relPath: string): Promise<Buffer> {
 /** Supprime un dossier logique (ex. `terrain/<id>`, `documents/<id>`). */
 export async function uploadsRemovePrefix(relDir: string): Promise<void> {
   const normalized = relDir.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (useBlobUploads()) {
+  if (blobUploadsEnabled()) {
     const token = blobToken();
     const prefix = toBlobPathname(normalized);
     let cursor: string | undefined;

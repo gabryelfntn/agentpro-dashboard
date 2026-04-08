@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { readDb, updateDb } from "@/lib/db";
+import { readDbForUser, updateDbForUser } from "@/lib/db";
 import type { PlanningEvent, PlanningEventType } from "@/lib/types";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -8,7 +9,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   try {
     const body = (await request.json()) as Partial<PlanningEvent>;
-    const dbBefore = await readDb();
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return unauthorizedJson();
+    const dbBefore = await readDbForUser(userId);
     const row = dbBefore.planningEvents.find((e) => e.id === id);
     if (!row) {
       return NextResponse.json({ error: "Introuvable" }, { status: 404 });
@@ -20,7 +23,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       return NextResponse.json({ error: "La fin doit être après le début" }, { status: 400 });
     }
 
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       const r = db.planningEvents.find((e) => e.id === id);
       if (!r) return;
       if (body.titre !== undefined) r.titre = body.titre.trim() || r.titre;
@@ -40,7 +43,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
       if (body.couleur !== undefined) r.couleur = body.couleur?.trim() || undefined;
     });
 
-    const db = await readDb();
+    const db = await readDbForUser(userId);
     return NextResponse.json(db.planningEvents.find((e) => e.id === id));
   } catch {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
@@ -49,8 +52,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
 export async function DELETE(_request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
   let removed = false;
-  await updateDb((db) => {
+  await updateDbForUser(userId, (db) => {
     const i = db.planningEvents.findIndex((e) => e.id === id);
     if (i >= 0) {
       db.planningEvents.splice(i, 1);

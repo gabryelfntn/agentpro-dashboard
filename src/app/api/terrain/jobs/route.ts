@@ -1,8 +1,9 @@
 import { after } from "next/server";
 import { NextResponse } from "next/server";
-import { updateDb, uploadsWrite } from "@/lib/db";
+import { readDbForUser, updateDbForUser, uploadsWrite } from "@/lib/db";
 import { processTerrainJob } from "@/lib/terrain/processJob";
 import type { TerrainJob } from "@/lib/types";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -11,8 +12,9 @@ const MAX_BYTES = 12 * 1024 * 1024;
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export async function GET() {
-  const { readDb } = await import("@/lib/db");
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   const jobs = [...db.terrainJobs].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
@@ -21,6 +23,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return unauthorizedJson();
     const form = await request.formData();
     const file = form.get("image");
     const briefEntreprise = String(form.get("briefEntreprise") ?? "").trim();
@@ -57,6 +61,7 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const job: TerrainJob = {
       id: jobId,
+      userId,
       createdAt: now,
       updatedAt: now,
       briefEntreprise,
@@ -66,12 +71,12 @@ export async function POST(request: Request) {
       status: "en_attente",
     };
 
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       db.terrainJobs.push(job);
     });
 
     after(() => {
-      void processTerrainJob(jobId);
+      void processTerrainJob(userId, jobId);
     });
 
     return NextResponse.json(job, { status: 201 });

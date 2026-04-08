@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { readDb } from "@/lib/db";
+import { readDbForUser } from "@/lib/db";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 function escapeCsv(s: string) {
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -7,7 +8,9 @@ function escapeCsv(s: string) {
 }
 
 export async function GET() {
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   const lines: string[] = [];
   lines.push("type,id,champs");
   for (const c of db.chantiers) {

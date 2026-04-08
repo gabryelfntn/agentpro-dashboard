@@ -1,26 +1,30 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 const SESSION_KEY = "agentpro-splash-v1";
 
 export function AppSplash() {
-  const [phase, setPhase] = useState<"boot" | "play" | "exit" | "off">("boot");
+  // Important: keep SSR + first client render identical to avoid hydration mismatch.
+  const [phase, setPhase] = useState<"play" | "exit" | "off">("off");
 
-  useLayoutEffect(() => {
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setPhase("off");
-      return;
-    }
-    try {
-      if (sessionStorage.getItem(SESSION_KEY)) {
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         setPhase("off");
         return;
       }
-    } catch {
-      /* private mode */
-    }
-    setPhase("play");
+      try {
+        if (sessionStorage.getItem(SESSION_KEY)) {
+          setPhase("off");
+          return;
+        }
+      } catch {
+        /* private mode */
+      }
+      setPhase("play");
+    }, 0);
+    return () => window.clearTimeout(t);
   }, []);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import { updateDb, uploadsWrite } from "@/lib/db";
+import { readDbForUser, updateDbForUser, uploadsWrite } from "@/lib/db";
 import type { MediaDocument } from "@/lib/types";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -15,8 +15,9 @@ const ALLOWED = new Set([
 ]);
 
 export async function GET() {
-  const { readDb } = await import("@/lib/db");
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   const list = [...db.mediaDocuments].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
@@ -25,6 +26,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return unauthorizedJson();
     const form = await request.formData();
     const file = form.get("file");
     const chantierIdRaw = form.get("chantierId");
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
       chantierId,
     };
 
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       db.mediaDocuments.push(row);
     });
 

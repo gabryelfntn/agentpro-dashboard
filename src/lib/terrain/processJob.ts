@@ -1,6 +1,6 @@
 import path from "path";
 import Replicate from "replicate";
-import { updateDb, uploadsRead, uploadsWrite } from "@/lib/db";
+import { updateDbForUser, uploadsRead, uploadsWrite } from "@/lib/db";
 import type { TerrainJob } from "@/lib/types";
 import { huggingFaceImageToImage } from "@/lib/terrain/huggingfaceImg2Img";
 
@@ -100,9 +100,9 @@ async function runReplicateImg2Img(
   return { buffer: outBuf, model };
 }
 
-export async function processTerrainJob(jobId: string): Promise<void> {
+export async function processTerrainJob(userId: string, jobId: string): Promise<void> {
   let snapshot: TerrainJob | undefined;
-  await updateDb((db) => {
+  await updateDbForUser(userId, (db) => {
     const j = db.terrainJobs.find((x) => x.id === jobId);
     if (!j || (j.status !== "en_attente" && j.status !== "en_cours")) return;
     j.status = "en_cours";
@@ -177,7 +177,7 @@ export async function processTerrainJob(jobId: string): Promise<void> {
 
     const dureeMs = Date.now() - t0;
 
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       const j = db.terrainJobs.find((x) => x.id === jobId);
       if (!j) return;
       j.status = "termine";
@@ -188,7 +188,7 @@ export async function processTerrainJob(jobId: string): Promise<void> {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erreur inconnue";
-    await updateDb((db) => {
+    await updateDbForUser(userId, (db) => {
       const j = db.terrainJobs.find((x) => x.id === jobId);
       if (!j) return;
       j.status = "erreur";

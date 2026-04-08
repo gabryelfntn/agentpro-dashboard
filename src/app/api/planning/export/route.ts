@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { format, parseISO } from "date-fns";
-import { readDb } from "@/lib/db";
+import { readDbForUser } from "@/lib/db";
+import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
 
 function esc(s: string) {
   return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
@@ -11,7 +12,9 @@ function icsUtc(d: Date) {
 }
 
 export async function GET() {
-  const db = await readDb();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return unauthorizedJson();
+  const db = await readDbForUser(userId);
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",

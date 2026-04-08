@@ -71,12 +71,25 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [displayName, setDisplayName] = useState("…");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     const r = await fetch("/api/profile");
+    if (r.status === 401) {
+      window.location.href = "/connexion";
+      return;
+    }
     if (!r.ok) return;
     const p = (await r.json()) as { displayName: string };
     setDisplayName(p.displayName);
+  }, []);
+
+  const doLogout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/connexion";
+    }
   }, []);
 
   useEffect(() => {
@@ -97,6 +110,7 @@ export function AppShell({
       if (e.key === "Escape") {
         setOpen(false);
         setCollapsed(false);
+        setMenuOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -216,15 +230,49 @@ export function AppShell({
               </div>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] py-1 pl-1 pr-4 backdrop-blur-md">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-bold text-white">
-                {displayName
-                  .split(/\s+/)
-                  .map((w) => w[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase() || "?"}
-              </span>
-              <span className="hidden text-sm font-medium text-slate-200 sm:inline">{displayName}</span>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-full pr-2 text-left"
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                title="Compte"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-bold text-white">
+                  {displayName
+                    .split(/\s+/)
+                    .map((w) => w[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase() || "?"}
+                </span>
+                <span className="hidden text-sm font-medium text-slate-200 sm:inline">{displayName}</span>
+              </button>
+              <div className="relative">
+                {menuOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-11 w-56 overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-950/95 shadow-xl backdrop-blur-xl"
+                  >
+                    <Link
+                      href="/parametres"
+                      role="menuitem"
+                      className="block px-4 py-3 text-sm text-slate-200 hover:bg-white/[0.06]"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Paramètres
+                    </Link>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="block w-full px-4 py-3 text-left text-sm text-rose-200 hover:bg-white/[0.06]"
+                      onClick={doLogout}
+                    >
+                      Se déconnecter
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </header>

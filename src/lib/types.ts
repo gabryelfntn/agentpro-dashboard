@@ -68,6 +68,7 @@ export type TerrainJobStatus = "en_attente" | "en_cours" | "termine" | "erreur";
 
 export type TerrainJob = {
   id: string;
+  userId: string;
   createdAt: string;
   updatedAt: string;
   briefEntreprise: string;
