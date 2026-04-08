@@ -21,9 +21,18 @@ type StoredSession = {
   expiresAt: string;
 };
 
+type PasswordReset = {
+  token: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt?: string;
+};
+
 type AuthStore = {
   users: StoredUser[];
   sessions: StoredSession[];
+  resets?: PasswordReset[];
 };
 
 const AUTH_PATH = path.join(process.cwd(), "data", "auth.json");
@@ -63,15 +72,16 @@ async function readAuthStore(): Promise<AuthStore> {
   const sql = pgSql();
   if (sql) {
     const raw = await pgReadValue(sql, AUTH_KV_KEY);
-    if (!raw) return { users: [], sessions: [] };
+    if (!raw) return { users: [], sessions: [], resets: [] };
     try {
       const parsed = JSON.parse(raw) as AuthStore;
       return {
         users: Array.isArray(parsed.users) ? parsed.users : [],
         sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+        resets: Array.isArray(parsed.resets) ? parsed.resets : [],
       };
     } catch {
-      return { users: [], sessions: [] };
+      return { users: [], sessions: [], resets: [] };
     }
   }
 
@@ -81,12 +91,13 @@ async function readAuthStore(): Promise<AuthStore> {
     return {
       users: Array.isArray(parsed.users) ? parsed.users : [],
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+      resets: Array.isArray(parsed.resets) ? parsed.resets : [],
     };
   } catch {
     if (isVercelRuntime()) {
       throw new Error(`Impossible de lire le store d'auth sur Vercel sans Postgres. ${VERCEL_DB_HINT}`);
     }
-    return { users: [], sessions: [] };
+    return { users: [], sessions: [], resets: [] };
   }
 }
 
@@ -230,5 +241,65 @@ export async function getAuthenticatedUserProfile() {
   const u = store.users.find((x) => x.id === userId);
   if (!u) return null;
   return { id: u.id, email: u.email, displayName: u.displayName };
+}
+
+export async function requestPasswordReset(emailRaw: string) {
+  const email = safeEmail(emailRaw);
+  if (!email || !email.includes("@")) {
+    return { ok: true as const }; // avoid enumeration
+  }
+
+  const store = await readAuthStore();
+  const user = store.users.find((u) => u.email === email);
+  if (!user) {
+    return { ok: true as const }; // avoid enumeration
+  }
+
+  // Invalidate previous active resets
+  store.resets = (store.resets ?? []).filter((r) => r.userId !== user.id || r.usedAt);
+  const reset: PasswordReset = {
+    token: randomToken(),
+    userId: user.id,
+    createdAt: nowIso(),
+    expiresAt: addDaysIso(1),
+  };
+  store.resets.push(reset);
+  await writeAuthStore(store);
+
+  // For now, return the token so the UI can show a link.
+  // In production, you should send this link via email.
+  return { ok: true as const, token: reset.token };
+}
+
+export async function resetPassword(tokenRaw: string, newPassword: string) {
+  const token = tokenRaw.trim();
+  if (!token) return { ok: false as const, status: 400, error: "Jeton invalide" };
+  if (!newPassword || newPassword.length < 8 || newPassword.length > 200) {
+    return { ok: false as const, status: 400, error: "Mot de passe invalide (min 8 caractères)" };
+  }
+
+  const store = await readAuthStore();
+  const resets = store.resets ?? [];
+  const r = resets.find((x) => x.token === token);
+  if (!r) return { ok: false as const, status: 400, error: "Lien expiré ou invalide" };
+  if (r.usedAt) return { ok: false as const, status: 400, error: "Lien déjà utilisé" };
+  if (new Date(r.expiresAt).getTime() <= Date.now()) {
+    return { ok: false as const, status: 400, error: "Lien expiré" };
+  }
+
+  const user = store.users.find((u) => u.id === r.userId);
+  if (!user) return { ok: false as const, status: 400, error: "Lien invalide" };
+
+  const salt = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
+  const passwordHash = await scryptHash(newPassword, salt);
+  user.salt = salt;
+  user.passwordHash = passwordHash;
+  r.usedAt = nowIso();
+
+  // Revoke all sessions for this user
+  store.sessions = store.sessions.filter((s) => s.userId !== user.id);
+  await writeAuthStore(store);
+
+  return { ok: true as const };
 }
 

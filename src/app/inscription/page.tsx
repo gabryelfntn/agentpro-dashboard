@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function InscriptionPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -79,15 +81,25 @@ export default function InscriptionPage() {
 
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mot de passe</span>
-              <input
-                className="h-11 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-500/40"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={8}
-              />
+              <div className="relative">
+                <input
+                  className="h-11 w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 pr-10 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-500/40"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               <span className="text-xs text-slate-500">Min. 8 caractères.</span>
             </label>
 
