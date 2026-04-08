@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export function ResetPasswordClient() {
   const router = useRouter();
-  const sp = useSearchParams();
-  const token = useMemo(() => sp.get("token") || "", [sp]);
 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -19,20 +18,17 @@ export function ResetPasswordClient() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!token) {
-      setError("Lien invalide.");
-      return;
-    }
     setLoading(true);
     try {
-      const r = await fetch("/api/auth/reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      const json = (await r.json()) as { error?: string };
-      if (!r.ok) {
-        setError(json.error || "Réinitialisation impossible");
+      const supabase = supabaseBrowser();
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        setError("Lien invalide ou expiré. Recommence la procédure.");
+        return;
+      }
+      const { error: err } = await supabase.auth.updateUser({ password });
+      if (err) {
+        setError(err.message || "Réinitialisation impossible");
         return;
       }
       setDone(true);

@@ -91,6 +91,66 @@ export type MediaDocument = {
   chantierId?: string;
 };
 
+export type WorkspaceRole = "owner" | "employee" | "manager" | "accountant";
+
+export type WorkspaceEmployee = {
+  role: Exclude<WorkspaceRole, "owner">;
+  createdAt: string;
+};
+
+export type WorkspaceInvite = {
+  role: Exclude<WorkspaceRole, "owner">;
+  createdAt: string;
+  createdByUserId: string;
+};
+
+export type Workspace = {
+  version: 1;
+  ownerUserId: string;
+  employees: Record<string, WorkspaceEmployee>;
+  invites?: Record<string, WorkspaceInvite>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AuditEntity =
+  | "chantier"
+  | "devis"
+  | "contact"
+  | "planning_event"
+  | "task"
+  | "media"
+  | "terrain_job"
+  | "profile"
+  | "dashboard"
+  | "export"
+  | "planning_export"
+  | "uploads"
+  | "reset"
+  | "workspace";
+
+export type AuditAction =
+  | "read"
+  | "create"
+  | "update"
+  | "delete"
+  | "export"
+  | "upload"
+  | "reset"
+  | "authz_denied";
+
+export type AuditEvent = {
+  id: string;
+  at: string;
+  actorUserId: string;
+  actorRole: WorkspaceRole;
+  action: AuditAction;
+  entity: AuditEntity;
+  entityId?: string;
+  ok: boolean;
+  reason?: string;
+};
+
 export type AppDatabase = {
   profile: Profile;
   chantiers: Chantier[];
@@ -100,6 +160,7 @@ export type AppDatabase = {
   contacts: Contact[];
   terrainJobs: TerrainJob[];
   mediaDocuments: MediaDocument[];
+  auditEvents: AuditEvent[];
 };
 
 export type KpiPayload = {

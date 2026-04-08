@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function ConnexionPage() {
   const router = useRouter();
@@ -18,14 +19,10 @@ export default function ConnexionPage() {
     setError(null);
     setLoading(true);
     try {
-      const r = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const json = (await r.json()) as { error?: string };
-      if (!r.ok) {
-        setError(json.error || "Connexion impossible");
+      const supabase = supabaseBrowser();
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) {
+        setError(err.message || "Connexion impossible");
         return;
       }
       router.replace("/dashboard");

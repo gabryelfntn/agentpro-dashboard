@@ -2,28 +2,24 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function MotDePasseOubliePage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
-  const [resetLink, setResetLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setResetLink(null);
     try {
-      const r = await fetch("/api/auth/forgot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const json = (await r.json()) as { token?: string };
+      const supabase = supabaseBrowser();
+      const redirectTo = `${window.location.origin}/reinitialiser-mot-de-passe`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       setSent(true);
-      // In this app we show the link directly (no email integration yet).
-      if (json.token) {
-        setResetLink(`${window.location.origin}/reinitialiser-mot-de-passe?token=${encodeURIComponent(json.token)}`);
+      if (error) {
+        // Keep UI generic to avoid enumeration.
+        return;
       }
     } finally {
       setLoading(false);
@@ -64,17 +60,9 @@ export default function MotDePasseOubliePage() {
           {sent ? (
             <div className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
               <p className="text-sm text-slate-200">Si un compte existe, un lien de réinitialisation est prêt.</p>
-              {resetLink ? (
-                <p className="mt-2 break-all text-sm text-sky-300">
-                  <a className="hover:text-sky-200" href={resetLink}>
-                    {resetLink}
-                  </a>
-                </p>
-              ) : (
-                <p className="mt-2 text-sm text-slate-400">
-                  (En prod, ce lien devrait être envoyé par email.)
-                </p>
-              )}
+              <p className="mt-2 text-sm text-slate-400">
+                Vérifie ta boîte mail. (Pense aussi aux spams.)
+              </p>
             </div>
           ) : null}
 

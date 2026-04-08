@@ -11,6 +11,8 @@
   "dependencies": {
     "@huggingface/inference": "^4.13.15",
     "@neondatabase/serverless": "^1.0.2",
+    "@supabase/ssr": "^0.10.0",
+    "@supabase/supabase-js": "^2.102.1",
     "@vercel/blob": "^2.3.3",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.7.0",

@@ -1,29 +1,33 @@
 import { NextResponse } from "next/server";
-import { readDbForUser, updateDbForUser } from "@/lib/db";
-import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
+import { withAuthz } from "@/lib/authz/withAuthz";
+import { readProfileForUser, writeProfileForUser } from "@/lib/db";
 
 export async function GET() {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return unauthorizedJson();
-  const db = await readDbForUser(userId);
-  return NextResponse.json(db.profile);
+  return withAuthz("profile:read", {
+    audit: { action: "read", entity: "profile" },
+    handler: async (ctx) => {
+      const profile = await readProfileForUser(ctx.userId);
+      return NextResponse.json(profile);
+    },
+  });
 }
 
 export async function PATCH(request: Request) {
-  try {
-    const userId = await getAuthenticatedUserId();
-    if (!userId) return unauthorizedJson();
-    const body = (await request.json()) as { displayName?: string };
-    const name = body.displayName?.trim();
-    if (!name || name.length > 80) {
-      return NextResponse.json({ error: "Nom invalide" }, { status: 400 });
-    }
-    await updateDbForUser(userId, (db) => {
-      db.profile.displayName = name;
-    });
-    const db = await readDbForUser(userId);
-    return NextResponse.json(db.profile);
-  } catch {
-    return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
-  }
+  return withAuthz("profile:update", {
+    audit: { action: "update", entity: "profile" },
+    handler: async (ctx) => {
+      try {
+        const body = (await request.json()) as { displayName?: string };
+        const name = body.displayName?.trim();
+        if (!name || name.length > 80) {
+          return NextResponse.json({ error: "Nom invalide" }, { status: 400 });
+        }
+        await writeProfileForUser(ctx.userId, { displayName: name });
+        const profile = await readProfileForUser(ctx.userId);
+        return NextResponse.json(profile);
+      } catch {
+        return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
+      }
+    },
+  });
 }

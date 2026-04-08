@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { readDbForUser, wipeDbStorage, writeDbForUser } from "@/lib/db";
-import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
+import { normalizeAppDb, wipeWorkspaceDbStorage, writeWorkspaceDb } from "@/lib/db";
+import { withAuthz } from "@/lib/authz/withAuthz";
 
 export async function POST() {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return unauthorizedJson();
-  const db = await readDbForUser(userId);
-  const profile = db.profile;
-  await wipeDbStorage(userId);
-  const fresh = await readDbForUser(userId);
-  fresh.profile = profile;
-  await writeDbForUser(userId, fresh);
-  return NextResponse.json({ ok: true });
+  return withAuthz("reset:run", {
+    audit: { action: "reset", entity: "reset" },
+    handler: async () => {
+      await wipeWorkspaceDbStorage();
+      const fresh = normalizeAppDb({});
+      await writeWorkspaceDb(fresh);
+      return NextResponse.json({ ok: true });
+    },
+  });
 }

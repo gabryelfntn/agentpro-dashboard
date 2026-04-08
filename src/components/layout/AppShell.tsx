@@ -18,6 +18,7 @@ import {
   FileSignature,
 } from "lucide-react";
 import { startTransition, useCallback, useEffect, useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 const navGroups = [
   {
@@ -86,7 +87,8 @@ export function AppShell({
 
   const doLogout = useCallback(async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const supabase = supabaseBrowser();
+      await supabase.auth.signOut();
     } finally {
       window.location.href = "/connexion";
     }

@@ -19,6 +19,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import type { Chantier, PlanningEvent, PlanningEventType } from "@/lib/types";
 import { notifyDataChanged } from "@/lib/notify";
 import { ChevronLeft, ChevronRight, Download, Plus, Trash2 } from "lucide-react";
+import { fetchAuthMe } from "@/lib/client/authMe";
 
 const types: { value: PlanningEventType; label: string }[] = [
   { value: "visite", label: "Visite" },
@@ -71,6 +72,7 @@ export default function PlanningPage() {
   const [description, setDescription] = useState("");
   const [chantierId, setChantierId] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     const [er, cr] = await Promise.all([fetch("/api/planning/events"), fetch("/api/chantiers")]);
@@ -82,6 +84,12 @@ export default function PlanningPage() {
   useEffect(() => {
     startTransition(() => {
       void load();
+    });
+    startTransition(() => {
+      void (async () => {
+        const me = await fetchAuthMe();
+        setIsOwner(me?.workspace?.role === "owner");
+      })();
     });
     const h = () => {
       startTransition(() => {
@@ -275,7 +283,11 @@ export default function PlanningPage() {
               <a
                 href="/api/planning/export"
                 download
-                className="inline-flex items-center gap-1 rounded-lg border border-white/[0.1] px-2 py-1.5 text-xs text-slate-300 hover:bg-white/[0.06]"
+                aria-disabled={isOwner === false}
+                className={[
+                  "inline-flex items-center gap-1 rounded-lg border border-white/[0.1] px-2 py-1.5 text-xs text-slate-300",
+                  isOwner === false ? "pointer-events-none opacity-40" : "hover:bg-white/[0.06]",
+                ].join(" ")}
               >
                 <Download className="h-3.5 w-3.5" />
                 .ics

@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { readDbForUser } from "@/lib/db";
+import { normalizeAppDb, readWorkspaceDb } from "@/lib/db";
 import { buildDashboardPayload } from "@/lib/metrics";
-import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
+import { withAuthz } from "@/lib/authz/withAuthz";
 
 export async function GET() {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return unauthorizedJson();
-  const db = await readDbForUser(userId);
-  const payload = buildDashboardPayload(db);
-  return NextResponse.json(payload);
+  return withAuthz("dashboard:read", {
+    audit: { action: "read", entity: "dashboard" },
+    handler: async () => {
+      const db = (await readWorkspaceDb()) ?? normalizeAppDb({});
+      const payload = buildDashboardPayload(db);
+      return NextResponse.json(payload);
+    },
+  });
 }

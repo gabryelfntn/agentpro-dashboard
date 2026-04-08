@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { GlassCard } from "@/components/ui/GlassCard";
 import type { DashboardPayload } from "@/lib/types";
 import { Download, FileSpreadsheet } from "lucide-react";
+import { fetchAuthMe } from "@/lib/client/authMe";
 
 const eur = new Intl.NumberFormat("fr-FR", {
   style: "currency",
@@ -14,6 +15,7 @@ const eur = new Intl.NumberFormat("fr-FR", {
 
 export default function RapportsPage() {
   const [summary, setSummary] = useState<DashboardPayload | null>(null);
+  const [isOwner, setIsOwner] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/dashboard");
@@ -24,6 +26,12 @@ export default function RapportsPage() {
   useEffect(() => {
     startTransition(() => {
       void load();
+    });
+    startTransition(() => {
+      void (async () => {
+        const me = await fetchAuthMe();
+        setIsOwner(me?.workspace?.role === "owner");
+      })();
     });
     const h = () => {
       startTransition(() => {
@@ -53,11 +61,18 @@ export default function RapportsPage() {
             <a
               href="/api/export"
               download
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 text-sm font-medium text-white transition hover:bg-white/[0.08] sm:w-auto sm:px-6"
+              aria-disabled={isOwner === false}
+              className={[
+                "mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 text-sm font-medium text-white transition sm:w-auto sm:px-6",
+                isOwner === false ? "pointer-events-none opacity-40" : "hover:bg-white/[0.08]",
+              ].join(" ")}
             >
               <Download className="h-4 w-4" />
               Télécharger l&apos;export
             </a>
+            {isOwner === false ? (
+              <p className="mt-2 text-xs text-slate-500">Réservé au compte Patron.</p>
+            ) : null}
           </GlassCard>
           <GlassCard className="p-5 sm:p-6">
             <h2 className="font-semibold text-white">Instantané KPI</h2>
@@ -95,11 +110,18 @@ export default function RapportsPage() {
           <a
             href="/api/planning/export"
             download
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 text-sm font-medium text-white transition hover:bg-white/[0.08] sm:w-auto sm:px-6"
+            aria-disabled={isOwner === false}
+            className={[
+              "mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 text-sm font-medium text-white transition sm:w-auto sm:px-6",
+              isOwner === false ? "pointer-events-none opacity-40" : "hover:bg-white/[0.08]",
+            ].join(" ")}
           >
             <Download className="h-4 w-4" />
             Télécharger agentpro-planning.ics
           </a>
+          {isOwner === false ? (
+            <p className="mt-2 text-xs text-slate-500">Export planning réservé au compte Patron.</p>
+          ) : null}
         </GlassCard>
       </div>
     </AppShell>

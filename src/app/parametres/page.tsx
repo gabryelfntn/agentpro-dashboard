@@ -4,12 +4,18 @@ import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { notifyDataChanged, notifyProfileChanged } from "@/lib/notify";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, MailPlus } from "lucide-react";
+import { fetchAuthMe } from "@/lib/client/authMe";
 
 export default function ParametresPage() {
   const [displayName, setDisplayName] = useState("");
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState<boolean | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"employee" | "manager" | "accountant">("employee");
+  const [inviteErr, setInviteErr] = useState<string | null>(null);
+  const [inviteOk, setInviteOk] = useState(false);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/profile");
@@ -21,6 +27,12 @@ export default function ParametresPage() {
   useEffect(() => {
     startTransition(() => {
       void load();
+    });
+    startTransition(() => {
+      void (async () => {
+        const me = await fetchAuthMe();
+        setIsOwner(me?.workspace?.role === "owner");
+      })();
     });
   }, [load]);
 
@@ -55,6 +67,24 @@ export default function ParametresPage() {
     notifyProfileChanged();
     await load();
     window.location.reload();
+  }
+
+  async function sendInvite(e: React.FormEvent) {
+    e.preventDefault();
+    setInviteErr(null);
+    setInviteOk(false);
+    const r = await fetch("/api/workspace/invites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+    });
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    if (!r.ok) {
+      setInviteErr(j.error ?? "Erreur");
+      return;
+    }
+    setInviteOk(true);
+    setInviteEmail("");
   }
 
   return (
@@ -109,6 +139,53 @@ export default function ParametresPage() {
           </ul>
         </GlassCard>
 
+        {isOwner ? (
+          <GlassCard className="p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <MailPlus className="h-5 w-5 shrink-0 text-sky-400" />
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-semibold text-white">Inviter un salarié</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Envoie une invitation par email (Supabase). À la première connexion, le salarié est rattaché à
+                  l’entreprise automatiquement.
+                </p>
+                <form onSubmit={sendInvite} className="mt-4 flex flex-col gap-3">
+                  <label className="flex flex-col gap-1 text-sm text-slate-400">
+                    Email
+                    <input
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className="rounded-xl border border-white/[0.08] bg-slate-950/50 px-3 py-2 text-white outline-none ring-sky-500/40 focus:ring-2"
+                      maxLength={160}
+                      required
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-slate-400">
+                    Rôle
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}
+                      className="rounded-xl border border-white/[0.08] bg-slate-950/50 px-3 py-2 text-white outline-none"
+                    >
+                      <option value="employee">Salarié (général)</option>
+                      <option value="manager">Manager</option>
+                      <option value="accountant">Comptable</option>
+                    </select>
+                  </label>
+                  <button
+                    type="submit"
+                    className="w-fit rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-sky-400"
+                  >
+                    Envoyer l’invitation
+                  </button>
+                  {inviteOk ? <p className="text-sm text-emerald-400">Invitation envoyée.</p> : null}
+                  {inviteErr ? <p className="text-sm text-red-400">{inviteErr}</p> : null}
+                </form>
+              </div>
+            </div>
+          </GlassCard>
+        ) : null}
+
         <GlassCard className="border-red-500/20 p-5 sm:p-6">
           <div className="flex gap-3">
             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
@@ -121,10 +198,17 @@ export default function ParametresPage() {
               <button
                 type="button"
                 onClick={() => void resetData()}
-                className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 transition hover:bg-red-500/20"
+                disabled={isOwner === false}
+                className={[
+                  "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 transition",
+                  isOwner === false ? "opacity-40" : "hover:bg-red-500/20",
+                ].join(" ")}
               >
                 Réinitialiser les données
               </button>
+              {isOwner === false ? (
+                <p className="mt-2 text-xs text-slate-500">Réservé au compte Patron.</p>
+              ) : null}
             </div>
           </div>
         </GlassCard>

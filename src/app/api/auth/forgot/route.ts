@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
-import { requestPasswordReset } from "@/lib/auth";
+import { supabaseServer } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { email?: string };
-    const r = await requestPasswordReset(body.email || "");
+    const email = body.email?.trim() || "";
+    const supabase = await supabaseServer();
+    const origin = new URL(request.url).origin;
+    const redirectTo = `${origin}/reinitialiser-mot-de-passe`;
     // Always 200 to avoid account enumeration.
-    return NextResponse.json(r);
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ ok: true });
   }

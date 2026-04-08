@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function InscriptionPage() {
   const router = useRouter();
@@ -19,26 +20,19 @@ export default function InscriptionPage() {
     setError(null);
     setLoading(true);
     try {
-      const r = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, displayName }),
+      const supabase = supabaseBrowser();
+      const { error: err } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { displayName: displayName.trim() || undefined },
+        },
       });
-      const json = (await r.json()) as { error?: string };
-      if (!r.ok) {
-        setError(json.error || "Inscription impossible");
+      if (err) {
+        setError(err.message || "Inscription impossible");
         return;
       }
-      // Auto-login after signup.
-      const r2 = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!r2.ok) {
-        router.replace("/connexion");
-        return;
-      }
+      // Depending on Supabase settings, user may need email confirmation.
       router.replace("/dashboard");
     } catch {
       setError("Inscription impossible");

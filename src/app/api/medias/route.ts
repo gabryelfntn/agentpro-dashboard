@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { readDbForUser, updateDbForUser, uploadsWrite } from "@/lib/db";
+import { readWorkspaceDb, updateWorkspaceDb, uploadsWrite } from "@/lib/db";
 import type { MediaDocument } from "@/lib/types";
-import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
+import { withAuthz } from "@/lib/authz/withAuthz";
 
 export const runtime = "nodejs";
 
@@ -15,63 +15,78 @@ const ALLOWED = new Set([
 ]);
 
 export async function GET() {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return unauthorizedJson();
-  const db = await readDbForUser(userId);
-  const list = [...db.mediaDocuments].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
-  return NextResponse.json(list);
+  return withAuthz("medias:read", {
+    audit: { action: "read", entity: "media" },
+    handler: async () => {
+      const db = await readWorkspaceDb();
+      const list = [...(db?.mediaDocuments ?? [])].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+      return NextResponse.json(list);
+    },
+  });
 }
 
 export async function POST(request: Request) {
-  try {
-    const userId = await getAuthenticatedUserId();
-    if (!userId) return unauthorizedJson();
-    const form = await request.formData();
-    const file = form.get("file");
-    const chantierIdRaw = form.get("chantierId");
-    const chantierId =
-      typeof chantierIdRaw === "string" && chantierIdRaw.trim() ? chantierIdRaw.trim() : undefined;
+  return withAuthz("medias:upload", {
+    audit: { action: "upload", entity: "media" },
+    handler: async () => {
+      try {
+        const form = await request.formData();
+        const file = form.get("file");
+        const chantierIdRaw = form.get("chantierId");
+        const chantierId =
+          typeof chantierIdRaw === "string" && chantierIdRaw.trim() ? chantierIdRaw.trim() : undefined;
 
-    if (!(file instanceof File) || file.size === 0) {
-      return NextResponse.json({ error: "Fichier requis" }, { status: 400 });
-    }
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: "Fichier trop volumineux (max 15 Mo)" }, { status: 400 });
-    }
-    const mime = file.type || "application/octet-stream";
-    if (!ALLOWED.has(mime)) {
-      return NextResponse.json(
-        { error: "Types acceptés : PDF, DOCX, JPEG, PNG, WebP" },
-        { status: 400 },
-      );
-    }
+        if (!(file instanceof File) || file.size === 0) {
+          return NextResponse.json({ error: "Fichier requis" }, { status: 400 });
+        }
+        if (file.size > MAX_BYTES) {
+          return NextResponse.json({ error: "Fichier trop volumineux (max 15 Mo)" }, { status: 400 });
+        }
+        const mime = file.type || "application/octet-stream";
+        if (!ALLOWED.has(mime)) {
+          return NextResponse.json(
+            { error: "Types acceptés : PDF, DOCX, JPEG, PNG, WebP" },
+            { status: 400 },
+          );
+        }
 
-    const id = crypto.randomUUID();
-    const safeName = file.name.replace(/[^\w.\-àâäéèêëïîôùûüç\s]/gi, "_").slice(0, 120);
-    const relDir = `documents/${id}`;
-    const relPath = `${relDir}/${safeName || "document"}`;
-    const buf = Buffer.from(await file.arrayBuffer());
-    await uploadsWrite(relPath, buf);
+        // Coherence check: chantierId must exist if provided.
+        if (chantierId) {
+          const db = await readWorkspaceDb();
+          const exists = Boolean(db?.chantiers.some((c) => c.id === chantierId));
+          if (!exists) {
+            return NextResponse.json({ error: "Chantier introuvable" }, { status: 400 });
+          }
+        }
 
-    const row: MediaDocument = {
-      id,
-      nomFichier: safeName || "document",
-      relPath,
-      mime,
-      taille: buf.length,
-      createdAt: new Date().toISOString(),
-      chantierId,
-    };
+        const id = crypto.randomUUID();
+        const safeName = file.name.replace(/[^\w.\-àâäéèêëïîôùûüç\s]/gi, "_").slice(0, 120);
+        const relDir = `documents/${id}`;
+        const relPath = `${relDir}/${safeName || "document"}`;
+        const buf = Buffer.from(await file.arrayBuffer());
+        await uploadsWrite(relPath, buf);
 
-    await updateDbForUser(userId, (db) => {
-      db.mediaDocuments.push(row);
-    });
+        const row: MediaDocument = {
+          id,
+          nomFichier: safeName || "document",
+          relPath,
+          mime,
+          taille: buf.length,
+          createdAt: new Date().toISOString(),
+          chantierId,
+        };
 
-    return NextResponse.json(row, { status: 201 });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erreur";
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+        await updateWorkspaceDb((db) => {
+          db.mediaDocuments.push(row);
+        });
+
+        return NextResponse.json(row, { status: 201 });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Erreur";
+        return NextResponse.json({ error: msg }, { status: 500 });
+      }
+    },
+  });
 }

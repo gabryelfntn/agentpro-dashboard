@@ -11,12 +11,15 @@ import {
 import { isVercelRuntime, VERCEL_DB_HINT } from "@/lib/vercelStorage";
 import type {
   AppDatabase,
+  AuditEvent,
   Chantier,
   Contact,
   Devis,
   PlanningEvent,
   Profile,
   TaskItem,
+  Workspace,
+  WorkspaceRole,
 } from "./types";
 
 const DB_ROOT = path.join(process.cwd(), "data", "users");
@@ -29,8 +32,237 @@ function dbKeyForUser(userId: string) {
   return `db:v1:${userId}`;
 }
 
+function profileKeyForUser(userId: string) {
+  return `profile:v1:${userId}`;
+}
+
+const WORKSPACE_KEY = "workspace:v1";
+const WORKSPACE_LOCAL_PATH = path.join(process.cwd(), "data", "workspace.json");
+const WORKSPACE_DB_KEY = "workspace_db:v1";
+const WORKSPACE_DB_LOCAL_PATH = path.join(process.cwd(), "data", "workspace-db.json");
+
 export function usesRemoteDb(): boolean {
   return usesPostgresDb();
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function isWorkspace(x: unknown): x is Workspace {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    (x as Workspace).version === 1 &&
+    typeof (x as Workspace).ownerUserId === "string" &&
+    typeof (x as Workspace).employees === "object" &&
+    (x as Workspace).employees !== null
+  );
+}
+
+export async function readWorkspace(): Promise<Workspace | null> {
+  const sql = pgSql();
+  if (sql) {
+    const raw = await pgReadValue(sql, WORKSPACE_KEY);
+    if (raw != null && raw !== "") {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        return isWorkspace(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  try {
+    const raw = await fs.readFile(WORKSPACE_LOCAL_PATH, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    return isWorkspace(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeWorkspace(workspace: Workspace): Promise<void> {
+  const payload = JSON.stringify(workspace, null, 2);
+  const sql = pgSql();
+  if (sql) {
+    await pgWriteValue(sql, WORKSPACE_KEY, payload);
+    return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Impossible d’écrire workspace.json sur Vercel sans Postgres. ${VERCEL_DB_HINT}`);
+  }
+  await fs.mkdir(path.dirname(WORKSPACE_LOCAL_PATH), { recursive: true });
+  await fs.writeFile(WORKSPACE_LOCAL_PATH, payload, "utf-8");
+}
+
+export async function initWorkspaceIfMissing(ownerUserId: string): Promise<Workspace> {
+  const existing = await readWorkspace();
+  if (existing) return existing;
+  const t = nowIso();
+  const created: Workspace = {
+    version: 1,
+    ownerUserId,
+    employees: {},
+    invites: {},
+    createdAt: t,
+    updatedAt: t,
+  };
+  await writeWorkspace(created);
+  return created;
+}
+
+export function getWorkspaceRole(workspace: Workspace, userId: string): WorkspaceRole | null {
+  if (workspace.ownerUserId === userId) return "owner";
+  const emp = workspace.employees[userId];
+  return emp?.role ?? null;
+}
+
+export async function tryAcceptInviteForUser(args: {
+  userId: string;
+  email: string;
+}): Promise<{ accepted: boolean; workspace: Workspace | null }> {
+  const emailKey = args.email.trim().toLowerCase();
+  if (!emailKey) return { accepted: false, workspace: null };
+  const ws = await readWorkspace();
+  if (!ws) return { accepted: false, workspace: null };
+  if (ws.ownerUserId === args.userId) return { accepted: false, workspace: ws };
+  if (ws.employees[args.userId]) return { accepted: false, workspace: ws };
+  const inv = ws.invites?.[emailKey];
+  if (!inv) return { accepted: false, workspace: ws };
+
+  const t = nowIso();
+  ws.employees[args.userId] = { role: inv.role, createdAt: t };
+  if (ws.invites) delete ws.invites[emailKey];
+  ws.updatedAt = t;
+  await writeWorkspace(ws);
+  return { accepted: true, workspace: ws };
+}
+
+export function appendAuditEvent(db: AppDatabase, ev: AuditEvent) {
+  if (!Array.isArray(db.auditEvents)) db.auditEvents = [];
+  db.auditEvents.push(ev);
+  // Keep last 2000 events to avoid unbounded growth in KV/JSON.
+  if (db.auditEvents.length > 2000) {
+    db.auditEvents.splice(0, db.auditEvents.length - 2000);
+  }
+}
+
+function isProfilePayload(x: unknown): x is Profile {
+  return isProfile(x);
+}
+
+export async function readProfileForUser(userId: string): Promise<Profile> {
+  const sql = pgSql();
+  if (sql) {
+    const raw = await pgReadValue(sql, profileKeyForUser(userId));
+    if (raw != null && raw !== "") {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (isProfilePayload(parsed)) return parsed;
+      } catch {
+        /* fallback */
+      }
+    }
+  } else {
+    try {
+      const raw = await fs.readFile(path.join(DB_ROOT, userId, "profile.json"), "utf-8");
+      const parsed = JSON.parse(raw) as unknown;
+      if (isProfilePayload(parsed)) return parsed;
+    } catch {
+      /* fallback */
+    }
+  }
+
+  // Backward compat: read from legacy per-user db.
+  const legacyDb = await readDbForUser(userId);
+  const p = legacyDb.profile;
+  await writeProfileForUser(userId, p);
+  return p;
+}
+
+export async function writeProfileForUser(userId: string, profile: Profile): Promise<void> {
+  const payload = JSON.stringify(profile, null, 2);
+  const sql = pgSql();
+  if (sql) {
+    await pgWriteValue(sql, profileKeyForUser(userId), payload);
+    return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Impossible d’écrire le profil utilisateur sur Vercel sans Postgres. ${VERCEL_DB_HINT}`);
+  }
+  const p = path.join(DB_ROOT, userId, "profile.json");
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.writeFile(p, payload, "utf-8");
+}
+
+export async function readWorkspaceDb(): Promise<AppDatabase | null> {
+  const sql = pgSql();
+  if (sql) {
+    const raw = await pgReadValue(sql, WORKSPACE_DB_KEY);
+    if (raw != null && raw !== "") {
+      try {
+        return normalizeAppDb(JSON.parse(raw));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+  try {
+    const raw = await fs.readFile(WORKSPACE_DB_LOCAL_PATH, "utf-8");
+    return normalizeAppDb(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export async function writeWorkspaceDb(db: AppDatabase): Promise<void> {
+  const payload = JSON.stringify(db, null, 2);
+  const sql = pgSql();
+  if (sql) {
+    await pgWriteValue(sql, WORKSPACE_DB_KEY, payload);
+    return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Impossible d’écrire workspace-db.json sur Vercel sans Postgres. ${VERCEL_DB_HINT}`);
+  }
+  await fs.mkdir(path.dirname(WORKSPACE_DB_LOCAL_PATH), { recursive: true });
+  await fs.writeFile(WORKSPACE_DB_LOCAL_PATH, payload, "utf-8");
+}
+
+export async function initWorkspaceDbFromOwnerIfMissing(ownerUserId: string): Promise<AppDatabase> {
+  const existing = await readWorkspaceDb();
+  if (existing) return existing;
+  // Seed from the owner's current per-user database for a smooth transition.
+  const ownerDb = await readDbForUser(ownerUserId);
+  await writeWorkspaceDb(ownerDb);
+  return ownerDb;
+}
+
+export async function updateWorkspaceDb(mutator: (db: AppDatabase) => void): Promise<AppDatabase> {
+  const db = (await readWorkspaceDb()) ?? buildDefaultDatabase();
+  mutator(db);
+  await writeWorkspaceDb(db);
+  return db;
+}
+
+export async function wipeWorkspaceDbStorage(): Promise<void> {
+  const sql = pgSql();
+  if (sql) {
+    await pgDeleteValue(sql, WORKSPACE_DB_KEY);
+    return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Réinitialisation impossible sans base Postgres sur Vercel. ${VERCEL_DB_HINT}`);
+  }
+  try {
+    await fs.unlink(WORKSPACE_DB_LOCAL_PATH);
+  } catch {
+    /* absent */
+  }
 }
 
 export async function wipeDbStorage(userId?: string): Promise<void> {
@@ -78,6 +310,7 @@ export function normalizeAppDb(parsed: unknown): AppDatabase {
   const legacy = !("planningEvents" in o);
   const now = new Date();
   const ids = chantiers.map((c) => c.id);
+  const auditEvents = Array.isArray(o.auditEvents) ? (o.auditEvents as AuditEvent[]) : [];
 
   return {
     profile: isProfile(o.profile) ? o.profile : d.profile,
@@ -92,6 +325,7 @@ export function normalizeAppDb(parsed: unknown): AppDatabase {
     contacts: Array.isArray(o.contacts) ? (o.contacts as Contact[]) : legacy ? seedContacts(now) : [],
     terrainJobs: Array.isArray(o.terrainJobs) ? o.terrainJobs : [],
     mediaDocuments: Array.isArray(o.mediaDocuments) ? o.mediaDocuments : [],
+    auditEvents,
   };
 }
 
@@ -322,6 +556,7 @@ function buildDefaultDatabase(): AppDatabase {
     contacts: seedContacts(now),
     terrainJobs: [],
     mediaDocuments: [],
+    auditEvents: [],
   };
 }
 

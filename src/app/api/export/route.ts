@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { readDbForUser } from "@/lib/db";
-import { getAuthenticatedUserId, unauthorizedJson } from "@/lib/auth";
+import { readWorkspaceDb } from "@/lib/db";
+import { withAuthz } from "@/lib/authz/withAuthz";
 
 function escapeCsv(s: string) {
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -8,12 +8,13 @@ function escapeCsv(s: string) {
 }
 
 export async function GET() {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return unauthorizedJson();
-  const db = await readDbForUser(userId);
-  const lines: string[] = [];
-  lines.push("type,id,champs");
-  for (const c of db.chantiers) {
+  return withAuthz("export:download", {
+    audit: { action: "export", entity: "export" },
+    handler: async () => {
+      const db = await readWorkspaceDb();
+      const lines: string[] = [];
+      lines.push("type,id,champs");
+      for (const c of db?.chantiers ?? []) {
     lines.push(
       [
         "chantier",
@@ -24,7 +25,7 @@ export async function GET() {
       ].join(","),
     );
   }
-  for (const d of db.devis) {
+  for (const d of db?.devis ?? []) {
     lines.push(
       [
         "devis",
@@ -35,7 +36,7 @@ export async function GET() {
       ].join(","),
     );
   }
-  for (const e of db.planningEvents) {
+  for (const e of db?.planningEvents ?? []) {
     lines.push(
       [
         "planning",
@@ -44,7 +45,7 @@ export async function GET() {
       ].join(","),
     );
   }
-  for (const t of db.tasks) {
+  for (const t of db?.tasks ?? []) {
     lines.push(
       [
         "tache",
@@ -55,7 +56,7 @@ export async function GET() {
       ].join(","),
     );
   }
-  for (const c of db.contacts) {
+  for (const c of db?.contacts ?? []) {
     lines.push(
       [
         "contact",
@@ -64,7 +65,7 @@ export async function GET() {
       ].join(","),
     );
   }
-  for (const j of db.terrainJobs) {
+  for (const j of db?.terrainJobs ?? []) {
     lines.push(
       [
         "vision_ia",
@@ -73,11 +74,13 @@ export async function GET() {
       ].join(","),
     );
   }
-  const csv = lines.join("\n");
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="agentpro-export-${new Date().toISOString().slice(0, 10)}.csv"`,
+      const csv = lines.join("\n");
+      return new NextResponse(csv, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="agentpro-export-${new Date().toISOString().slice(0, 10)}.csv"`,
+        },
+      });
     },
   });
 }
