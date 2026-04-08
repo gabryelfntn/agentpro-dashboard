@@ -98,6 +98,22 @@ export async function writeWorkspace(workspace: Workspace): Promise<void> {
   await fs.writeFile(WORKSPACE_LOCAL_PATH, payload, "utf-8");
 }
 
+export async function wipeWorkspaceStorage(): Promise<void> {
+  const sql = pgSql();
+  if (sql) {
+    await pgDeleteValue(sql, WORKSPACE_KEY);
+    return;
+  }
+  if (isVercelRuntime()) {
+    throw new Error(`Réinitialisation impossible sans base Postgres sur Vercel. ${VERCEL_DB_HINT}`);
+  }
+  try {
+    await fs.unlink(WORKSPACE_LOCAL_PATH);
+  } catch {
+    /* absent */
+  }
+}
+
 export async function initWorkspaceIfMissing(ownerUserId: string): Promise<Workspace> {
   const existing = await readWorkspace();
   if (existing) return existing;

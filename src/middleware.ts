@@ -7,7 +7,8 @@ function isPublicPath(pathname: string) {
     pathname === "/connexion" ||
     pathname === "/inscription" ||
     pathname === "/mot-de-passe-oublie" ||
-    pathname === "/reinitialiser-mot-de-passe"
+    pathname === "/reinitialiser-mot-de-passe" ||
+    pathname === "/auth/callback"
   ) {
     return true;
   }

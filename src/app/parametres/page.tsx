@@ -4,7 +4,7 @@ import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { notifyDataChanged, notifyProfileChanged } from "@/lib/notify";
-import { AlertTriangle, MailPlus } from "lucide-react";
+import { AlertTriangle, MailPlus, ShieldAlert } from "lucide-react";
 import { fetchAuthMe } from "@/lib/client/authMe";
 
 export default function ParametresPage() {
@@ -16,6 +16,7 @@ export default function ParametresPage() {
   const [inviteRole, setInviteRole] = useState<"employee" | "manager" | "accountant">("employee");
   const [inviteErr, setInviteErr] = useState<string | null>(null);
   const [inviteOk, setInviteOk] = useState(false);
+  const [inviteInfo, setInviteInfo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/profile");
@@ -73,18 +74,40 @@ export default function ParametresPage() {
     e.preventDefault();
     setInviteErr(null);
     setInviteOk(false);
+    setInviteInfo(null);
     const r = await fetch("/api/workspace/invites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
     });
-    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    const j = (await r.json().catch(() => ({}))) as { error?: string; ok?: boolean; info?: string };
     if (!r.ok) {
       setInviteErr(j.error ?? "Erreur");
       return;
     }
-    setInviteOk(true);
+    if (j.info) {
+      setInviteInfo(j.info);
+    } else {
+      setInviteOk(true);
+    }
     setInviteEmail("");
+  }
+
+  async function wipeWorkspace() {
+    if (
+      !confirm(
+        "Supprimer l’entreprise (workspace) et désactiver l’accès de tous les comptes actuels ? Le prochain utilisateur connecté deviendra Patron automatiquement. Cette action est irréversible.",
+      )
+    ) {
+      return;
+    }
+    const r = await fetch("/api/workspace/wipe", { method: "POST" });
+    if (!r.ok) {
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      alert(j.error ?? "Erreur");
+      return;
+    }
+    window.location.href = "/connexion";
   }
 
   return (
@@ -178,9 +201,38 @@ export default function ParametresPage() {
                   >
                     Envoyer l’invitation
                   </button>
-                  {inviteOk ? <p className="text-sm text-emerald-400">Invitation envoyée.</p> : null}
+                  {inviteOk ? <p className="text-sm text-emerald-400">E-mail d’invitation envoyé par Supabase.</p> : null}
+                  {inviteInfo ? <p className="text-sm text-sky-300">{inviteInfo}</p> : null}
                   {inviteErr ? <p className="text-sm text-red-400">{inviteErr}</p> : null}
+                  <p className="text-xs text-slate-500">
+                    Si rien n’arrive : Vercel → variables{" "}
+                    <code className="rounded bg-white/5 px-1">SUPABASE_SERVICE_ROLE_KEY</code> +{" "}
+                    <code className="rounded bg-white/5 px-1">NEXT_PUBLIC_SUPABASE_URL</code> ; Supabase → Auth → URL
+                    (Site URL + Redirect URLs avec ton domaine Vercel).
+                  </p>
                 </form>
+              </div>
+            </div>
+          </GlassCard>
+        ) : null}
+
+        {isOwner ? (
+          <GlassCard className="border-amber-500/20 p-5 sm:p-6">
+            <div className="flex gap-3">
+              <ShieldAlert className="h-5 w-5 shrink-0 text-amber-400" />
+              <div>
+                <h2 className="text-lg font-semibold text-white">Entreprise (verrou)</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Supprime le workspace et retire l’accès à tous les comptes actuels. Le prochain utilisateur connecté
+                  deviendra Patron.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void wipeWorkspace()}
+                  className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-200 transition hover:bg-amber-500/20"
+                >
+                  Supprimer l’entreprise
+                </button>
               </div>
             </div>
           </GlassCard>

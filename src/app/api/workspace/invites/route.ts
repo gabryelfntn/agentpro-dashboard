@@ -39,20 +39,55 @@ export async function POST(request: Request) {
 
       // Send email invite via Supabase Admin API.
       // The user will land in the app authenticated; we auto-attach by email on first access.
+      const origin = new URL(request.url).origin;
+      // Ne pas rediriger directement vers /dashboard : le middleware bloque avant l’échange du ?code=.
+      const defaultRedirect = `${origin}/auth/callback?next=${encodeURIComponent("/dashboard")}`;
       const redirectTo =
         typeof body.redirectTo === "string" && body.redirectTo.trim()
           ? body.redirectTo.trim()
-          : `${new URL(request.url).origin}/dashboard`;
+          : defaultRedirect;
       try {
         const admin = supabaseAdmin();
-        const { error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
+        const { error } = await admin.auth.admin.inviteUserByEmail(email, {
+          redirectTo,
+          data: { agentpro_invited: true },
+        });
         if (error) {
-          return NextResponse.json({ error: error.message || "Invitation impossible" }, { status: 400 });
+          const em = (error.message || "").toLowerCase();
+          // Compte déjà créé dans Supabase : l’invite est enregistrée, le salarié n’a qu’à se connecter.
+          if (
+            em.includes("already") ||
+            em.includes("registered") ||
+            em.includes("exists") ||
+            em.includes("duplicate")
+          ) {
+            return NextResponse.json({
+              ok: true,
+              info:
+                "Ce compte existe déjà dans Supabase. L’invitation est enregistrée : le salarié peut se connecter avec cet e-mail et sera rattaché automatiquement.",
+            });
+          }
+          return NextResponse.json(
+            {
+              error:
+                error.message ||
+                "Invitation impossible. Vérifiez Supabase Auth (SMTP) et les URL de redirection.",
+            },
+            { status: 400 },
+          );
         }
       } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Supabase admin non configuré (SUPABASE_SERVICE_ROLE_KEY)";
-        return NextResponse.json({ error: msg }, { status: 501 });
+        const raw = e instanceof Error ? e.message : String(e);
+        if (raw.includes("SUPABASE_SERVICE_ROLE_KEY") || raw.includes("Supabase admin env")) {
+          return NextResponse.json(
+            {
+              error:
+                "Invitation par e-mail désactivée : ajoutez SUPABASE_SERVICE_ROLE_KEY (clé service_role) et NEXT_PUBLIC_SUPABASE_URL sur Vercel, puis redéployez.",
+            },
+            { status: 501 },
+          );
+        }
+        return NextResponse.json({ error: raw || "Erreur serveur" }, { status: 501 });
       }
 
       return NextResponse.json({ ok: true });
